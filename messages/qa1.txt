@@ -1,0 +1,12 @@
+Good morning, {name},
+
+I hope you are doing well! It has been a while since we last connected, and I hope you remember me—Duc, the professor from the AI Solution Architect course.
+
+I wanted to take a moment to update you. The GenAI Incubator is thriving, and I encourage you to join the LinkedIn group 'AI Solution Architect' to stay in touch and keep updated.
+
+Feel free to reach out to me on LinkedIn at: https://linkedin.com/in/duchaba.
+
+Have a fantastic day!
+
+Best regards,
+Duc Haba

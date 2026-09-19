@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="/Users/duchaba/Documents/auto email friends"
+
+cd "$PROJECT_DIR"
+exec "$PROJECT_DIR/.venv/bin/friendly-mailer" \
+  contacts/qa1.csv \
+  messages/qa1.txt \
+  --subject "Touch base" \
+  --noai
