@@ -1,3 +1,5 @@
+"""Unit tests for deterministic contact and MIME-message utilities."""
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,13 +8,17 @@ from friendly_mailer.core import Contact, Draft, build_email, load_contacts, mes
 
 
 class CoreTests(unittest.TestCase):
+    """Exercise validation, normalization, MIME creation, and stable IDs."""
+
     def test_load_contacts(self):
+        """CSV loading preserves names and normalizes email case."""
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "contacts.csv"
             path.write_text("name,email\nAlex,Alex@Example.com\n", encoding="utf-8")
             self.assertEqual(load_contacts(path), [Contact("Alex", "alex@example.com")])
 
     def test_rejects_duplicate_contact(self):
+        """Addresses differing only by case are rejected as duplicates."""
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "contacts.csv"
             path.write_text(
@@ -22,12 +28,14 @@ class CoreTests(unittest.TestCase):
                 load_contacts(path)
 
     def test_build_email_is_plain_text(self):
+        """MIME construction sets the recipient and a plain-text body."""
         draft = Draft(Contact("Alex", "alex@example.com"), "Hello", "Hi Alex!")
         message = build_email(draft)
         self.assertEqual(message["To"], "Alex <alex@example.com>")
         self.assertEqual(message.get_content().strip(), "Hi Alex!")
 
     def test_message_id_is_stable(self):
+        """Identical logical inputs always produce the same send identifier."""
         contact = Contact("Alex", "alex@example.com")
         self.assertEqual(
             message_id(contact, "Hi", "Body"), message_id(contact, "Hi", "Body")
