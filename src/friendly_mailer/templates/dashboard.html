@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Friendly Mailer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='library.css') }}">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">F</span><span>Friendly Mailer</span></div>
+      <div class="status"><span class="status-dot"></span> Gmail ready</div>
+    </header>
+
+    <section class="hero">
+      <div><p class="eyebrow">CAMPAIGN STUDIO</p><h1>Write once. Send personally.</h1><p>Review every note before it reaches your friends.</p></div>
+      <div class="hero-count"><strong id="recipient-count">0</strong><span>recipients</span></div>
+    </section>
+
+    <div class="workspace">
+      <section class="panel recipients-panel">
+        <div class="panel-head"><div><p class="step">01</p><h2>Recipients</h2></div><button class="button ghost" id="add-contact">＋ Add person</button></div>
+        <label class="library-label">Contact list<select id="contact-file"></select></label>
+        <div class="contact-header"><span>Name</span><span>Email address</span><span></span></div>
+        <div id="contact-list" class="contact-list"></div>
+      </section>
+
+      <section class="panel compose-panel">
+        <div class="panel-head"><div><p class="step">02</p><h2>Compose</h2></div><span class="saved-label" id="save-status">qa1</span></div>
+        <label class="library-label">Saved message<select id="message-file"></select></label>
+        <label>Subject<input id="subject" autocomplete="off"></label>
+        <label>Message<textarea id="message" rows="13"></textarea></label>
+        <p class="hint">Use <code>{name}</code> to insert each recipient’s first name.</p>
+        <div class="settings-row">
+          <label class="toggle"><input id="use-ai" type="checkbox" checked><span></span>Use AI variation</label>
+          <label class="model-label">Model<select id="model"><option value="gpt-5.6-luna">GPT-5.6 Luna</option><option value="gpt-5-nano">GPT-5 Nano · lowest cost</option><option value="gpt-4.1-nano">GPT-4.1 Nano</option></select></label>
+        </div>
+      </section>
+    </div>
+
+    <section class="action-bar">
+      <div><strong>Friendly Mailer v{{ initial.appVersion }}</strong><span>Save your changes, then preview the complete batch.</span></div>
+      <div class="actions"><button class="button secondary" id="save">Save changes</button><button class="button secondary" id="preview">Preview emails</button><button class="button primary" id="send-now">Send now →</button></div>
+    </section>
+
+    <section id="preview-section" class="preview-section hidden">
+      <div class="preview-title"><div><p class="step">03</p><h2>Review sample emails</h2><p id="preview-summary" class="preview-summary"></p></div><button class="button danger" id="open-send">Send batch</button></div>
+      <div id="drafts" class="drafts"></div>
+    </section>
+  </main>
+
+  <div class="toast hidden" id="toast"></div>
+  <div class="modal-backdrop hidden" id="modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-icon">↗</div><h2 id="modal-title">Send these emails?</h2>
+      <p>They will be sent immediately from your connected Gmail account. This cannot be undone.</p>
+      <label>Type <strong id="confirmation-label"></strong> to confirm<input id="confirmation" autocomplete="off"></label>
+      <div class="modal-actions"><button class="button secondary" id="cancel-send">Cancel</button><button class="button danger" id="confirm-send" disabled>Send now</button></div>
+    </div>
+  </div>
+  <script>window.INITIAL_DATA = {{ initial|tojson }};</script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

@@ -17,6 +17,7 @@ from pathlib import Path
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+SUBJECT_RE = re.compile(r"^\{subject:\s*(.*?)\}\s*$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,51 @@ class Draft:
     contact: Contact
     subject: str
     body: str
+
+
+def parse_message_file(content: str, default_subject: str = "Touch base") -> tuple[str, str]:
+    """Separate optional subject metadata from a message file.
+
+    The recognized first-line format is ``{subject: Welcome back}``. Only the
+    first line is treated as metadata, so similar text elsewhere remains part
+    of the message body.
+
+    Args:
+        content: Complete text loaded from a message file.
+        default_subject: Subject returned when no metadata line is present.
+
+    Returns:
+        A ``(subject, body)`` tuple with the metadata line removed from body.
+    """
+    first_line, separator, remainder = content.partition("\n")
+    match = SUBJECT_RE.fullmatch(first_line.strip())
+    if not match:
+        return default_subject, content
+    subject = match.group(1).strip() or default_subject
+    return subject, remainder.lstrip("\r\n") if separator else ""
+
+
+def format_message_file(subject: str, body: str) -> str:
+    """Serialize a subject and body using the message-file metadata format.
+
+    Args:
+        subject: Subject text to place in the first-line metadata record.
+        body: Plain-text email body.
+
+    Returns:
+        File content ending with one newline.
+
+    Raises:
+        ValueError: If the subject or body is empty, or the subject contains a
+            line break or closing brace that would corrupt the metadata record.
+    """
+    clean_subject = subject.strip()
+    clean_body = body.strip()
+    if not clean_subject or not clean_body:
+        raise ValueError("Subject and message are required")
+    if "\n" in clean_subject or "\r" in clean_subject or "}" in clean_subject:
+        raise ValueError("Subject cannot contain a line break or closing brace")
+    return f"{{subject: {clean_subject}}}\n\n{clean_body}\n"
 
 
 def load_contacts(path: Path) -> list[Contact]:

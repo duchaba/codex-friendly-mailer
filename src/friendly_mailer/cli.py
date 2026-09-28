@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .ai import personalize
-from .core import Draft, build_email, load_contacts, message_id, read_sent_ids
+from .core import Draft, build_email, load_contacts, message_id, parse_message_file, read_sent_ids
 from .gmail import gmail_service, send_message
 
 
@@ -66,7 +66,10 @@ def parser() -> argparse.ArgumentParser:
     app = argparse.ArgumentParser(description="Personalize and send reviewable emails to friends")
     app.add_argument("contacts", type=Path, help="CSV with name,email columns")
     app.add_argument("message", type=Path, help="UTF-8 text file containing the original message")
-    app.add_argument("--subject", required=True, help="Email subject (kept identical for all recipients)")
+    app.add_argument(
+        "--subject",
+        help="Email subject; overrides a {subject: ...} line in the message file",
+    )
     app.add_argument("--model", default="gpt-5.6-luna", help="OpenAI model ID")
     app.add_argument(
         "--noai",
@@ -109,9 +112,14 @@ def main(argv: list[str] | None = None) -> int:
         # Local configuration is loaded before checking for the OpenAI key.
         load_local_env()
         contacts = load_contacts(args.contacts)
-        original = args.message.read_text(encoding="utf-8").strip()
+        content = args.message.read_text(encoding="utf-8")
+        file_subject, original = parse_message_file(content, default_subject="")
+        original = original.strip()
+        subject = (args.subject or file_subject).strip()
         if not original:
             raise ValueError("Message file is empty")
+        if not subject:
+            raise ValueError("Provide --subject or add {subject: ...} as the message's first line")
         if args.limit < 1 or len(contacts) > min(args.limit, DEFAULT_LIMIT):
             raise ValueError(f"This run has {len(contacts)} contacts; maximum is {min(args.limit, DEFAULT_LIMIT)}")
         if not args.noai and not os.environ.get("OPENAI_API_KEY"):
@@ -129,12 +137,12 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(f"Generating {number}/{len(contacts)} for {contact.name}…", file=sys.stderr)
                 body = personalize(contact, original, model=args.model)
-            draft = Draft(contact=contact, subject=args.subject, body=body)
-            draft_id = message_id(contact, args.subject, original)
+            draft = Draft(contact=contact, subject=subject, body=body)
+            draft_id = message_id(contact, subject, original)
             preview_path = args.outbox / f"{number:03d}-{draft_id}.eml"
             preview_path.write_bytes(build_email(draft).as_bytes())
             drafts.append((draft_id, draft))
-            print(f"\n--- {contact.name} <{contact.email}> ---\nSubject: {args.subject}\n\n{body}\n")
+            print(f"\n--- {contact.name} <{contact.email}> ---\nSubject: {subject}\n\n{body}\n")
 
         print(f"Saved {len(drafts)} preview(s) in {args.outbox.resolve()}")
         if not args.send:

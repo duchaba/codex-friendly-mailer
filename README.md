@@ -35,7 +35,18 @@ Alex,alex@example.com
 Sam,sam@example.com
 ```
 
-Put the original message in a UTF-8 text file. The subject is provided separately and is not AI-generated.
+Put the original message in a UTF-8 text file. The subject can be supplied with `--subject` or stored in the message file, and is never AI-generated.
+
+Message files used by the dashboard may store their subject on the first line:
+
+```text
+{subject: Welcome back}
+
+Good morning, {name},
+...
+```
+
+The dashboard removes this metadata line from the email body when loading the file and restores it when saving. Files without a subject line remain supported and use `Touch base` as the dashboard default.
 
 ## Preview, then send
 
@@ -59,6 +70,33 @@ friendly-mailer contacts.csv message.txt --subject "Hello" --model gpt-5.6-luna 
 ```
 
 The default model is `gpt-5.6-luna`, chosen for a lightweight rewriting task. Override it with `--model`. If generation or sending fails, the command exits nonzero. Successful sends are appended to `send-log.jsonl`, which prevents accidental duplicate sends.
+
+## Local dashboard
+
+Start the private dashboard from the project directory:
+
+```bash
+source .venv/bin/activate
+friendly-mailer-dashboard
+```
+
+Then open [http://127.0.0.1:8765](http://127.0.0.1:8765). The dashboard runs only on your computer and provides:
+
+- an editable recipient list with add and remove controls;
+- subject and message editing with local `{name}` substitution;
+- AI/no-AI mode and model selection;
+- a Save button that updates `contacts/qa1.csv` and `messages/qa1.txt`;
+- complete email previews before delivery; and
+- a guarded Send button that requires typing the exact batch confirmation.
+
+The primary **Send now** button generates the batch, saves the exact MIME emails
+under `logs/YYYY-MM-DD-HH-MM/`, and sends immediately without another prompt.
+The **Preview emails** → **Send batch** path retains the typed confirmation for
+times when you want a separate review step. Each log folder contains the `.eml`
+files, a `batch.json` manifest, and a `delivery.jsonl` record after successful
+Gmail delivery.
+
+Keep the terminal window open while using the dashboard. Press `Control-C` in that terminal to stop it.
 
 To skip OpenAI and use the original message without AI rewriting, add `--noai`. Any `{name}` placeholder is replaced locally with the recipient's first name, and no contact or message data is sent to OpenAI:
 

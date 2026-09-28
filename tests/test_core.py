@@ -4,7 +4,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from friendly_mailer.core import Contact, Draft, build_email, load_contacts, message_id
+from friendly_mailer.core import (
+    Contact,
+    Draft,
+    build_email,
+    format_message_file,
+    load_contacts,
+    message_id,
+    parse_message_file,
+)
 
 
 class CoreTests(unittest.TestCase):
@@ -40,6 +48,17 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(
             message_id(contact, "Hi", "Body"), message_id(contact, "Hi", "Body")
         )
+
+    def test_message_subject_metadata_round_trip(self):
+        """Subject metadata serializes and parses without entering the body."""
+        content = format_message_file("Welcome back", "Hello, {name}!")
+        self.assertEqual(
+            parse_message_file(content), ("Welcome back", "Hello, {name}!\n")
+        )
+
+    def test_message_without_metadata_uses_default_subject(self):
+        """Legacy body-only message files retain their complete content."""
+        self.assertEqual(parse_message_file("Hello!", "Fallback"), ("Fallback", "Hello!"))
 
 
 if __name__ == "__main__":
