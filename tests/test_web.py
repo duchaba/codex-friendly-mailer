@@ -30,10 +30,10 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"preview-summary", response.data)
         self.assertIn(b"Friendly Mailer v1.1.0", response.data)
 
-    def test_library_loads_qa1_contacts(self):
-        """The contacts selector endpoint loads an existing CSV list."""
+    def test_library_loads_contact_circle(self):
+        """The contacts selector endpoint loads an existing SQLite circle."""
         response = self.client.post(
-            "/api/load", json={"kind": "contacts", "name": "qa1.csv"}
+            "/api/load", json={"kind": "contacts", "name": "circle0-qa"}
         )
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.get_json()["contacts"]), 1)

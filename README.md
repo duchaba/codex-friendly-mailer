@@ -82,10 +82,11 @@ friendly-mailer-dashboard
 
 Then open [http://127.0.0.1:8765](http://127.0.0.1:8765). The dashboard runs only on your computer and provides:
 
-- an editable recipient list with add and remove controls;
+- an editable recipient list loaded from the local SQLite `contacts` table;
+- a contact-circle selector populated from distinct database `circle` values;
 - subject and message editing with local `{name}` substitution;
 - AI/no-AI mode and model selection;
-- a Save button that updates `contacts/qa1.csv` and `messages/qa1.txt`;
+- a Save button that updates the selected database circle and message file;
 - complete email previews before delivery; and
 - a guarded Send button that requires typing the exact batch confirmation.
 

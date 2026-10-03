@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import secrets
+import sqlite3
 import time
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -31,13 +29,13 @@ from .gmail import gmail_service, send_message
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONTACTS_PATH = PROJECT_ROOT / "contacts" / "qa1.csv"
 MESSAGE_PATH = PROJECT_ROOT / "messages" / "qa1.txt"
 OUTBOX_PATH = PROJECT_ROOT / "outbox"
 LOG_PATH = PROJECT_ROOT / "send-log.jsonl"
 LOGS_PATH = PROJECT_ROOT / "logs"
 CREDENTIALS_PATH = PROJECT_ROOT / "credentials.json"
 TOKEN_PATH = PROJECT_ROOT / "token.json"
+DATABASE_PATH = PROJECT_ROOT / "data" / "friendly-mailer.db"
 MAX_BATCHES = 20
 
 # Previewed drafts stay in memory and are addressed by an unguessable token.
@@ -82,18 +80,80 @@ def _contacts_from_payload(payload: Any) -> list[Contact]:
 
 
 def _load_contacts() -> list[dict[str, str]]:
-    """Load dashboard contacts from the qa1 CSV file.
+    """Load the default dashboard contacts from SQLite.
 
     Returns:
-        Serializable contact dictionaries, or an empty list when absent.
+        Serializable contacts from ``circle0-qa``, or the first available
+        circle when that circle does not exist.
     """
-    if not CONTACTS_PATH.exists():
+    circles = _load_circles()
+    if not circles:
         return []
-    with CONTACTS_PATH.open(newline="", encoding="utf-8-sig") as handle:
-        return [
-            {"name": (row.get("name") or "").strip(), "email": (row.get("email") or "").strip()}
-            for row in csv.DictReader(handle)
-        ]
+    circle = "circle0-qa" if "circle0-qa" in circles else circles[0]
+    return _load_circle_contacts(circle)
+
+
+def _load_circles() -> list[str]:
+    """Return the distinct contact circles stored in SQLite.
+
+    Returns:
+        Alphabetically ordered, nonblank circle values.
+    """
+    if not DATABASE_PATH.exists():
+        return []
+    with sqlite3.connect(DATABASE_PATH) as connection:
+        rows = connection.execute(
+            "SELECT DISTINCT circle FROM contacts WHERE trim(circle) <> '' ORDER BY circle COLLATE NOCASE"
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
+def _load_circle_contacts(circle: str) -> list[dict[str, str]]:
+    """Load every contact belonging to one SQLite circle.
+
+    Args:
+        circle: Exact circle value selected in the dashboard.
+
+    Returns:
+        Contact dictionaries ordered by name and email.
+    """
+    if circle not in _load_circles():
+        raise ValueError(f"Unknown contact circle: {circle}")
+    with sqlite3.connect(DATABASE_PATH) as connection:
+        rows = connection.execute(
+            """
+            SELECT name, email
+            FROM contacts
+            WHERE circle = ?
+            ORDER BY name COLLATE NOCASE, email COLLATE NOCASE
+            """,
+            (circle,),
+        ).fetchall()
+    return [{"name": name, "email": email} for name, email in rows]
+
+
+def _save_circle_contacts(circle: str, contacts: list[Contact]) -> None:
+    """Replace one circle's membership with the visible dashboard contacts.
+
+    Args:
+        circle: Existing circle selected in the dashboard.
+        contacts: Validated replacement members for that circle.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If the selected circle does not exist.
+        sqlite3.Error: If the transaction cannot be completed.
+    """
+    if circle not in _load_circles():
+        raise ValueError(f"Unknown contact circle: {circle}")
+    with sqlite3.connect(DATABASE_PATH) as connection:
+        connection.execute("DELETE FROM contacts WHERE circle = ?", (circle,))
+        connection.executemany(
+            "INSERT INTO contacts(name, email, circle, touch_date) VALUES (?, ?, ?, NULL)",
+            ((contact.name, contact.email, circle) for contact in contacts),
+        )
 
 
 def _library_files(folder: Path, suffix: str) -> list[str]:
@@ -143,7 +203,7 @@ def _save_inputs(
     contacts: list[Contact],
     message: str,
     subject: str,
-    contact_file: str = "qa1.csv",
+    circle: str = "circle0-qa",
     message_file: str = "qa1.txt",
 ) -> None:
     """Persist the editable qa1 contacts and source message.
@@ -152,21 +212,15 @@ def _save_inputs(
         contacts: Validated contacts to write as CSV.
         message: Plain-text source email body.
         subject: Subject saved as first-line message metadata.
-        contact_file: Selected CSV file name inside the contacts folder.
+        circle: Selected SQLite circle whose membership should be replaced.
         message_file: Selected text file name inside the messages folder.
 
     Returns:
         None.
     """
-    contacts_path = _library_path("contacts", contact_file)
     message_path = _library_path("messages", message_file)
-    contacts_path.parent.mkdir(parents=True, exist_ok=True)
     message_path.parent.mkdir(parents=True, exist_ok=True)
-    buffer = io.StringIO(newline="")
-    writer = csv.DictWriter(buffer, fieldnames=["name", "email"], lineterminator="\n")
-    writer.writeheader()
-    writer.writerows(asdict(contact) for contact in contacts)
-    contacts_path.write_text(buffer.getvalue(), encoding="utf-8")
+    _save_circle_contacts(circle, contacts)
     message_path.write_text(format_message_file(subject, message), encoding="utf-8")
 
 
@@ -215,15 +269,17 @@ def create_app() -> Flask:
         """Render the dashboard with the saved qa1 data."""
         content = MESSAGE_PATH.read_text(encoding="utf-8") if MESSAGE_PATH.exists() else ""
         subject, message = parse_message_file(content)
+        circles = _load_circles()
+        selected_circle = "circle0-qa" if "circle0-qa" in circles else (circles[0] if circles else "")
         return render_template(
             "dashboard.html",
             initial={
                 "contacts": _load_contacts(),
                 "message": message,
                 "subject": subject,
-                "contactFiles": _library_files(PROJECT_ROOT / "contacts", ".csv"),
+                "contactFiles": circles,
                 "messageFiles": _library_files(PROJECT_ROOT / "messages", ".txt"),
-                "contactFile": "qa1.csv",
+                "contactFile": selected_circle,
                 "messageFile": "qa1.txt",
                 "appVersion": __version__,
             },
@@ -236,21 +292,15 @@ def create_app() -> Flask:
             data = request.get_json(force=True)
             kind = str(data.get("kind", ""))
             name = str(data.get("name", ""))
+            if kind == "contacts":
+                return jsonify({"ok": True, "contacts": _load_circle_contacts(name)})
             path = _library_path(kind, name)
             if not path.exists():
                 raise ValueError(f"File not found: {name}")
             if kind == "messages":
                 subject, message = parse_message_file(path.read_text(encoding="utf-8"))
                 return jsonify({"ok": True, "message": message, "subject": subject})
-            with path.open(newline="", encoding="utf-8-sig") as handle:
-                contacts = [
-                    {
-                        "name": (row.get("name") or "").strip(),
-                        "email": (row.get("email") or "").strip(),
-                    }
-                    for row in csv.DictReader(handle)
-                ]
-            return jsonify({"ok": True, "contacts": contacts})
+            raise ValueError("Unknown library type")
         except (AttributeError, OSError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -264,9 +314,9 @@ def create_app() -> Flask:
             subject = str(data.get("subject", "")).strip()
             if not message or not subject:
                 raise ValueError("Subject and message are required")
-            contact_file = str(data.get("contactFile") or "qa1.csv")
+            circle = str(data.get("contactFile") or "circle0-qa")
             message_file = str(data.get("messageFile") or "qa1.txt")
-            _save_inputs(contacts, message, subject, contact_file, message_file)
+            _save_inputs(contacts, message, subject, circle, message_file)
             return jsonify({"ok": True, "message": "Saved selected contacts and message"})
         except (AttributeError, OSError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400

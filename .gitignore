@@ -10,3 +10,6 @@ token.json
 outbox/
 send-log.jsonl
 logs/
+data/*.db
+data/*.db-shm
+data/*.db-wal
