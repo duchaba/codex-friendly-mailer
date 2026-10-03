@@ -2,6 +2,9 @@
 
 A review-first command-line app that lightly varies a personal message for each friend with the OpenAI API, then sends approved drafts through your Gmail account. It uses Gmail OAuth; your Gmail password is never requested or stored.
 
+Current release: **v1.3 — SQLite Contacts**. The dashboard stores contacts in
+the local SQLite database and organizes recipient selection by circle.
+
 Use this only for people who reasonably expect to hear from you. It intentionally caps each run at 50 recipients and refuses to resend the same source message to the same address.
 
 ## Setup

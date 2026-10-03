@@ -28,7 +28,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"message-file", response.data)
         self.assertIn(b"Send now", response.data)
         self.assertIn(b"preview-summary", response.data)
-        self.assertIn(b"Friendly Mailer v1.1.0", response.data)
+        self.assertIn(b"Friendly Mailer v1.3", response.data)
 
     def test_library_loads_contact_circle(self):
         """The contacts selector endpoint loads an existing SQLite circle."""
