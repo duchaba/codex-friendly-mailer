@@ -1,8 +1,10 @@
-Good morning, {name},
+{subject: A Long-Overdue Touch Base}
+
+Good evening, {name},
 
 It has been a while since we last chatted, and I have some exciting news to share.
 
-I finished my third AI book, Finding Your Voice in the Age of AI, and I believe it is my best one yet.
+I published my third AI book, Finding Your Voice in the Age of AI, and I believe it is my best one yet.
 
 When I finally held the finished book in my hands, I thought about the many friends who have been part of my journey over the years. You were one of them.
 
