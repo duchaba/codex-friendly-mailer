@@ -15,7 +15,7 @@ from flask import Flask, jsonify, render_template, request
 
 from . import __version__
 from .ai import personalize
-from .cli import DEFAULT_LIMIT, load_local_env
+from .cli import load_local_env
 from .core import (
     Contact,
     Draft,
@@ -37,6 +37,8 @@ CREDENTIALS_PATH = PROJECT_ROOT / "credentials.json"
 TOKEN_PATH = PROJECT_ROOT / "token.json"
 DATABASE_PATH = PROJECT_ROOT / "data" / "friendly-mailer.db"
 MAX_BATCHES = 20
+DELIVERY_CHUNK_SIZE = 50
+MAX_CAMPAIGN_RECIPIENTS = 500
 
 # Previewed drafts stay in memory and are addressed by an unguessable token.
 # This ensures the Send action delivers exactly what the user reviewed.
@@ -58,8 +60,10 @@ def _contacts_from_payload(payload: Any) -> list[Contact]:
     """
     if not isinstance(payload, list) or not payload:
         raise ValueError("Add at least one recipient")
-    if len(payload) > DEFAULT_LIMIT:
-        raise ValueError(f"A batch may contain at most {DEFAULT_LIMIT} recipients")
+    if len(payload) > MAX_CAMPAIGN_RECIPIENTS:
+        raise ValueError(
+            f"A campaign may contain at most {MAX_CAMPAIGN_RECIPIENTS} recipients"
+        )
 
     contacts: list[Contact] = []
     seen: set[str] = set()
@@ -247,12 +251,29 @@ def _save_batch_log(batch: list[tuple[str, Draft]]) -> Path:
                 "name": draft.contact.name,
                 "recipient": draft.contact.email,
                 "subject": draft.subject,
+                "batch": ((number - 1) // DELIVERY_CHUNK_SIZE) + 1,
             }
         )
     (batch_path / "batch.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     return batch_path
+
+
+def _write_delivery_status(batch_path: Path, statuses: list[dict[str, Any]]) -> None:
+    """Persist the latest delivery state for every message in a batch.
+
+    Args:
+        batch_path: Timestamped batch log directory.
+        statuses: Mutable status records containing ``pending``, ``sent``, or
+            ``failed`` state for each generated message.
+
+    Returns:
+        None.
+    """
+    (batch_path / "delivery-status.json").write_text(
+        json.dumps(statuses, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
 
 
 def create_app() -> Flask:
@@ -396,30 +417,126 @@ def create_app() -> Flask:
 
             # Persist every exact MIME message before the first delivery call.
             batch_path = _save_batch_log(batch)
-            service = gmail_service(CREDENTIALS_PATH, TOKEN_PATH)
-            sent: list[str] = []
             delivery_path = batch_path / "delivery.jsonl"
+            statuses = [
+                {
+                    "id": draft_id,
+                    "recipient": draft.contact.email,
+                    "status": "pending",
+                    "batch": ((number - 1) // DELIVERY_CHUNK_SIZE) + 1,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                for number, (draft_id, draft) in enumerate(batch, start=1)
+            ]
+            _write_delivery_status(batch_path, statuses)
+
             with LOG_PATH.open("a", encoding="utf-8") as log, delivery_path.open(
                 "a", encoding="utf-8"
             ) as delivery_log:
-                for number, (draft_id, draft) in enumerate(batch, start=1):
-                    gmail_id = send_message(service, build_email(draft))
-                    record = {
-                        "id": draft_id,
-                        "gmail_id": gmail_id,
-                        "recipient": draft.contact.email,
-                        "sent_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                    log.write(json.dumps(record) + "\n")
-                    log.flush()
-                    delivery_log.write(json.dumps(record) + "\n")
+                # Record the initial state before contacting Gmail. If the
+                # process is interrupted, unattempted messages remain pending.
+                for status in statuses:
+                    delivery_log.write(json.dumps(status) + "\n")
+                delivery_log.flush()
+
+                try:
+                    service = gmail_service(CREDENTIALS_PATH, TOKEN_PATH)
+                except Exception as exc:
+                    # Authentication/service setup is a batch-level failure.
+                    # No message is retried or attempted when setup fails.
+                    for status in statuses:
+                        status.update(
+                            {
+                                "status": "failed",
+                                "error": f"Gmail setup failed: {exc}",
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                        )
+                        delivery_log.write(json.dumps(status) + "\n")
                     delivery_log.flush()
-                    sent.append(draft.contact.email)
-                    if number < len(batch):
-                        time.sleep(1)
+                    _write_delivery_status(batch_path, statuses)
+                else:
+                    # Process large campaigns as sequential chunks of 50.
+                    # Every message receives exactly one attempt; a failure is
+                    # isolated and does not stop its chunk or later chunks.
+                    for chunk_start in range(0, len(batch), DELIVERY_CHUNK_SIZE):
+                        chunk = batch[chunk_start : chunk_start + DELIVERY_CHUNK_SIZE]
+                        chunk_statuses = statuses[
+                            chunk_start : chunk_start + DELIVERY_CHUNK_SIZE
+                        ]
+                        for offset, ((draft_id, draft), status) in enumerate(
+                            zip(chunk, chunk_statuses), start=1
+                        ):
+                            number = chunk_start + offset
+                            try:
+                                gmail_id = send_message(service, build_email(draft))
+                            except Exception as exc:
+                                status.update(
+                                    {
+                                        "status": "failed",
+                                        "error": str(exc),
+                                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                                    }
+                                )
+                            else:
+                                record = {
+                                    "id": draft_id,
+                                    "gmail_id": gmail_id,
+                                    "recipient": draft.contact.email,
+                                    "batch": status["batch"],
+                                    "sent_at": datetime.now(timezone.utc).isoformat(),
+                                }
+                                log.write(json.dumps(record) + "\n")
+                                log.flush()
+                                status.update(
+                                    {
+                                        "status": "sent",
+                                        "gmail_id": gmail_id,
+                                        "updated_at": record["sent_at"],
+                                    }
+                                )
+                            delivery_log.write(json.dumps(status) + "\n")
+                            delivery_log.flush()
+                            _write_delivery_status(batch_path, statuses)
+                            if number < len(batch):
+                                time.sleep(1)
             with _batch_lock:
                 _preview_batches.pop(token, None)
-            return jsonify({"ok": True, "sent": sent, "logFolder": str(batch_path)})
+            sent = [status["recipient"] for status in statuses if status["status"] == "sent"]
+            failed = [status for status in statuses if status["status"] == "failed"]
+            pending = [status for status in statuses if status["status"] == "pending"]
+            batch_count = (len(statuses) + DELIVERY_CHUNK_SIZE - 1) // DELIVERY_CHUNK_SIZE
+            batch_summaries = [
+                {
+                    "batch": batch_number,
+                    "total": sum(status["batch"] == batch_number for status in statuses),
+                    "sent": sum(
+                        status["batch"] == batch_number and status["status"] == "sent"
+                        for status in statuses
+                    ),
+                    "failed": sum(
+                        status["batch"] == batch_number and status["status"] == "failed"
+                        for status in statuses
+                    ),
+                    "pending": sum(
+                        status["batch"] == batch_number and status["status"] == "pending"
+                        for status in statuses
+                    ),
+                }
+                for batch_number in range(1, batch_count + 1)
+            ]
+            return jsonify(
+                {
+                    "ok": True,
+                    "sent": sent,
+                    "failed": failed,
+                    "pending": pending,
+                    "batchSize": DELIVERY_CHUNK_SIZE,
+                    "batchCount": batch_count,
+                    "batches": batch_summaries,
+                    "logFolder": str(batch_path),
+                }
+            )
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 

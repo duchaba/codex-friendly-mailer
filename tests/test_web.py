@@ -1,5 +1,6 @@
 """Tests for local dashboard validation, previews, and batch logging."""
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,7 +29,9 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"message-file", response.data)
         self.assertIn(b"Send now", response.data)
         self.assertIn(b"preview-summary", response.data)
-        self.assertIn(b"Friendly Mailer v1.4", response.data)
+        self.assertIn(b"delivery-result", response.data)
+        self.assertIn(b"delivery-sent", response.data)
+        self.assertIn(b"Friendly Mailer v2.0", response.data)
 
     def test_library_loads_contact_circle(self):
         """The contacts selector endpoint loads an existing SQLite circle."""
@@ -80,6 +83,104 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(len(list(batch_path.glob("*.eml"))), 1)
             self.assertTrue((batch_path / "batch.json").exists())
             self.assertIn("alex@example.com", (batch_path / "batch.json").read_text())
+
+    def test_send_continues_after_failure_and_does_not_retry(self):
+        """One failed recipient does not stop or retry the remaining batch."""
+        contacts = [
+            {"name": "Alex One", "email": "alex1@example.com"},
+            {"name": "Alex Two", "email": "alex2@example.com"},
+            {"name": "Alex Three", "email": "alex3@example.com"},
+        ]
+        preview = self.client.post(
+            "/api/preview",
+            json={
+                "contacts": contacts,
+                "subject": "Hello",
+                "message": "Hi {name}!",
+                "noai": True,
+            },
+        )
+        self.assertEqual(preview.status_code, 200)
+        token = preview.get_json()["token"]
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with (
+                patch("friendly_mailer.web.LOGS_PATH", root / "logs"),
+                patch("friendly_mailer.web.LOG_PATH", root / "send-log.jsonl"),
+                patch("friendly_mailer.web.gmail_service", return_value=object()),
+                patch(
+                    "friendly_mailer.web.send_message",
+                    side_effect=["gmail-1", RuntimeError("delivery failed"), "gmail-3"],
+                ) as mocked_send,
+                patch("friendly_mailer.web.time.sleep"),
+            ):
+                response = self.client.post(
+                    "/api/send", json={"token": token, "immediate": True}
+                )
+
+            self.assertEqual(response.status_code, 200)
+            result = response.get_json()
+            self.assertEqual(len(result["sent"]), 2)
+            self.assertEqual(len(result["failed"]), 1)
+            self.assertEqual(result["pending"], [])
+            self.assertEqual(mocked_send.call_count, 3)
+
+            status_files = list((root / "logs").glob("*/delivery-status.json"))
+            self.assertEqual(len(status_files), 1)
+            statuses = json.loads(status_files[0].read_text(encoding="utf-8"))
+            self.assertEqual(
+                [item["status"] for item in statuses], ["sent", "failed", "sent"]
+            )
+
+    def test_large_campaign_sends_in_fifty_recipient_batches(self):
+        """A campaign above 50 is accepted and summarized in ordered chunks."""
+        contacts = [
+            {"name": f"Person {number}", "email": f"person{number}@example.com"}
+            for number in range(1, 54)
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch("friendly_mailer.web.OUTBOX_PATH", root / "outbox"):
+                preview = self.client.post(
+                    "/api/preview",
+                    json={
+                        "contacts": contacts,
+                        "subject": "Hello",
+                        "message": "Hi {name}!",
+                        "noai": True,
+                    },
+                )
+            self.assertEqual(preview.status_code, 200)
+            token = preview.get_json()["token"]
+
+            with (
+                patch("friendly_mailer.web.LOGS_PATH", root / "logs"),
+                patch("friendly_mailer.web.LOG_PATH", root / "send-log.jsonl"),
+                patch("friendly_mailer.web.gmail_service", return_value=object()),
+                patch("friendly_mailer.web.send_message", return_value="gmail-id") as send,
+                patch("friendly_mailer.web.time.sleep"),
+            ):
+                response = self.client.post(
+                    "/api/send", json={"token": token, "immediate": True}
+                )
+
+            self.assertEqual(response.status_code, 200)
+            result = response.get_json()
+            self.assertEqual(send.call_count, 53)
+            self.assertEqual(result["batchSize"], 50)
+            self.assertEqual(result["batchCount"], 2)
+            self.assertEqual(
+                result["batches"],
+                [
+                    {"batch": 1, "total": 50, "sent": 50, "failed": 0, "pending": 0},
+                    {"batch": 2, "total": 3, "sent": 3, "failed": 0, "pending": 0},
+                ],
+            )
+            status_file = next((root / "logs").glob("*/delivery-status.json"))
+            statuses = json.loads(status_file.read_text(encoding="utf-8"))
+            self.assertEqual([item["batch"] for item in statuses[:50]], [1] * 50)
+            self.assertEqual([item["batch"] for item in statuses[50:]], [2] * 3)
 
 
 if __name__ == "__main__":

@@ -2,11 +2,14 @@
 
 A review-first command-line app that lightly varies a personal message for each friend with the OpenAI API, then sends approved drafts through your Gmail account. It uses Gmail OAuth; your Gmail password is never requested or stored.
 
-Current release: **v1.4 — Circle 1 Extra**. The dashboard stores contacts in
-the local SQLite database and organizes recipient selection by circle,
-including additional groups such as `circle1-inner-extra`.
+Current release: **v2.0 — ELVTR Tested**. The dashboard stores contacts in the
+local SQLite database, organizes recipient selection by circle, and sends large
+campaigns in tracked 50-recipient batches.
 
-Use this only for people who reasonably expect to hear from you. It intentionally caps each run at 50 recipients and refuses to resend the same source message to the same address.
+Use this only for people who reasonably expect to hear from you. The dashboard
+accepts campaigns of up to 500 recipients, delivers them sequentially in
+50-recipient batches, and refuses to resend the same source message to the same
+address. The command-line tool retains its separate 50-recipient safety cap.
 
 ## Setup
 
@@ -100,6 +103,17 @@ The **Preview emails** → **Send batch** path retains the typed confirmation fo
 times when you want a separate review step. Each log folder contains the `.eml`
 files, a `batch.json` manifest, and a `delivery.jsonl` record after successful
 Gmail delivery.
+
+Each generated message is recorded as `pending` before delivery. Gmail receives
+exactly one send attempt per recipient. A failed message is marked `failed`,
+later recipients continue sending, and no automatic retry occurs. The final
+state of every message is stored in `delivery-status.json`; `delivery.jsonl`
+retains the full sequence of pending and final status events.
+
+Dashboard campaigns larger than 50 recipients are split automatically into
+sequential groups of 50. For example, 247 contacts are delivered as
+50/50/50/50/47. Status files include the batch number for every recipient, and
+the persistent dashboard result shows a summary for each batch.
 
 Keep the terminal window open while using the dashboard. Press `Control-C` in that terminal to stop it.
 

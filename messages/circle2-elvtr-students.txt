@@ -1,0 +1,35 @@
+{subject: Welcome back to class}
+
+Good morning, {name},
+
+It has been a while since we last chatted in class or during one of our one-on-one calls, and I have some exciting news to share.
+
+I published my third AI book.
+
+Finally, right?
+
+Yes, it is that book, the one we talked about during class and probably when I was supposed to be answering your questions about AI architecture.
+
+Finding Your Voice in the Age of AI is finally out in the world, and I believe it is my best book yet.
+
+When I finally held the finished book in my hands, I thought about the many friends from my AI Solution Architect cohorts who shared their experiences, aspirations, crazy startup ideas, and occasionally challenged my thinking. You were one of them.
+
+I still remember our classes, the questions that turned a five-minute discussion into twenty, and especially the one-on-one conversations where we sometimes talked as much about careers and life as we did about AI. Those were good times.
+
+Across nearly 400 pages, this is not another technical textbook explaining how artificial intelligence works. Instead, I wrote it as a collection of human stories, woven together with practical lessons, research, reflection, and a bit of humor about how ordinary people are learning to live and work alongside AI.
+
+During those office hours before class, every topic was on the table, and you were often the one who led the discussion. So more than anything, I would simply be happy knowing that a copy found its way into your hands.
+
+There is absolutely no pressure or expectation to purchase the book or share the news with friends and colleagues. But if you are curious to see what your former instructor has been doing when he should have been sleeping:
+
+Here is the book:
+https://www.amazon.com/gp/product/B0HLYLDVGM
+Paperback: $19.99
+eBook: $9.99
+
+Whether you read one chapter or nearly 400 pages, I hope you enjoy reading it as much as I enjoyed writing it.
+
+And perhaps somewhere in those pages, you will recognize a little bit of the conversations we once had.
+
+Warm regards,
+Duc Haba

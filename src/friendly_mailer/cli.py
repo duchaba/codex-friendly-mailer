@@ -163,24 +163,60 @@ def main(argv: list[str] | None = None) -> int:
                 print("Cancelled; nothing was sent.")
                 return 1
 
-        service = gmail_service(args.credentials, args.token)
+        status_path = args.outbox / "delivery-status.json"
+        statuses = [
+            {
+                "id": draft_id,
+                "recipient": draft.contact.email,
+                "status": "pending",
+            }
+            for draft_id, draft in drafts
+        ]
+        status_path.write_text(json.dumps(statuses, indent=2) + "\n", encoding="utf-8")
+
+        try:
+            service = gmail_service(args.credentials, args.token)
+        except Exception as exc:
+            for status in statuses:
+                status.update({"status": "failed", "error": f"Gmail setup failed: {exc}"})
+            status_path.write_text(json.dumps(statuses, indent=2) + "\n", encoding="utf-8")
+            print(f"error: Gmail setup failed: {exc}", file=sys.stderr)
+            return 2
+
         with args.log.open("a", encoding="utf-8") as log:
-            for number, (draft_id, draft) in enumerate(drafts, start=1):
-                gmail_id = send_message(service, build_email(draft))
-                record = {
-                    "id": draft_id,
-                    "gmail_id": gmail_id,
-                    "recipient": draft.contact.email,
-                    "sent_at": datetime.now(timezone.utc).isoformat(),
-                }
-                log.write(json.dumps(record) + "\n")
-                # Flush each successful send immediately so a later failure
-                # cannot cause already-sent messages to be retried unknowingly.
-                log.flush()
-                print(f"Sent {number}/{len(drafts)} to {draft.contact.email}")
+            for number, ((draft_id, draft), status) in enumerate(
+                zip(drafts, statuses), start=1
+            ):
+                try:
+                    gmail_id = send_message(service, build_email(draft))
+                except Exception as exc:
+                    status.update({"status": "failed", "error": str(exc)})
+                    print(
+                        f"Failed {number}/{len(drafts)} for {draft.contact.email}: {exc}",
+                        file=sys.stderr,
+                    )
+                else:
+                    record = {
+                        "id": draft_id,
+                        "gmail_id": gmail_id,
+                        "recipient": draft.contact.email,
+                        "sent_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    log.write(json.dumps(record) + "\n")
+                    # Flush each successful send immediately so a later failure
+                    # cannot cause already-sent messages to be retried unknowingly.
+                    log.flush()
+                    status.update({"status": "sent", "gmail_id": gmail_id})
+                    print(f"Sent {number}/{len(drafts)} to {draft.contact.email}")
+                status_path.write_text(
+                    json.dumps(statuses, indent=2) + "\n", encoding="utf-8"
+                )
                 if number < len(drafts):
                     time.sleep(max(0, args.delay))
-        return 0
+        failed_count = sum(status["status"] == "failed" for status in statuses)
+        sent_count = sum(status["status"] == "sent" for status in statuses)
+        print(f"Delivery complete: {sent_count} sent, {failed_count} failed, 0 pending")
+        return 2 if failed_count else 0
     except (OSError, ValueError, RuntimeError, ImportError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

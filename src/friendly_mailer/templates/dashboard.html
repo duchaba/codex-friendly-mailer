@@ -45,6 +45,20 @@
       <div class="actions"><button class="button secondary" id="save">Save changes</button><button class="button secondary" id="preview">Preview emails</button><button class="button primary" id="send-now">Send now →</button></div>
     </section>
 
+    <section id="delivery-result" class="delivery-result hidden" aria-live="polite">
+      <div class="delivery-result-head">
+        <div><p class="step">DELIVERY RESULT</p><h2 id="delivery-title">Batch complete</h2></div>
+        <span id="delivery-time" class="delivery-time"></span>
+      </div>
+      <div class="delivery-counts">
+        <div class="delivery-count sent"><strong id="delivery-sent">0</strong><span>Sent</span></div>
+        <div class="delivery-count failed"><strong id="delivery-failed">0</strong><span>Failed</span></div>
+        <div class="delivery-count pending"><strong id="delivery-pending">0</strong><span>Pending</span></div>
+      </div>
+      <div id="delivery-details" class="delivery-details"></div>
+      <p id="delivery-log" class="delivery-log"></p>
+    </section>
+
     <section id="preview-section" class="preview-section hidden">
       <div class="preview-title"><div><p class="step">03</p><h2>Review sample emails</h2><p id="preview-summary" class="preview-summary"></p></div><button class="button danger" id="open-send">Send batch</button></div>
       <div id="drafts" class="drafts"></div>
