@@ -8,7 +8,7 @@ I published my third AI book.
 
 Finally, right?
 
-Yes, it is that book, the one we talked about on Kickstarter and LinkedIn, and the one that occasionally sneaked into my weekly #AI4Good and #FlexFriday posts.
+Yes, it is the book we discussed on YML, Kickstarter, and LinkedIn, which also occasionally appeared in my weekly #AI4Good and #FlexFriday posts.
 
 “Finding Your Voice in the Age of AI” is finally out in the world, and I believe it is my best book yet.
 
@@ -16,9 +16,9 @@ When I finally held the finished book in my hands, I thought about the many frie
 
 You were one of them.
 
-Those online moments may have seemed fleeting at the time, but they were little gusts of wind that kept this sailboat moving. And after a very long voyage, I am delighted to report that we did not sink.
+Those online moments may have seemed fleeting at the time, but they were little gusts of wind that kept this sailboat moving. And after a long voyage, I am delighted to report that we did not sink.
 
-We made it to shore with all the figures, toes, and noddles accounted for.
+We made it to shore with all our fingers, toes, and noddles accounted for.
 
 Across nearly 400 pages, this is not another technical textbook explaining how artificial intelligence works. Instead, I wrote it as a collection of human stories, woven together with practical lessons, research, reflection, and a bit of humor about how ordinary people are learning to live and work alongside AI.
 

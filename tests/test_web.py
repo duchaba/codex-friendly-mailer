@@ -1,6 +1,7 @@
 """Tests for local dashboard validation, previews, and batch logging."""
 
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,7 +32,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"preview-summary", response.data)
         self.assertIn(b"delivery-result", response.data)
         self.assertIn(b"delivery-sent", response.data)
-        self.assertIn(b"Friendly Mailer v2.0", response.data)
+        self.assertIn(b"Friendly Mailer v2.1", response.data)
 
     def test_library_loads_contact_circle(self):
         """The contacts selector endpoint loads an existing SQLite circle."""
@@ -57,6 +58,53 @@ class DashboardTests(unittest.TestCase):
         data = response.get_json()
         self.assertIn("subject", data)
         self.assertIn("message", data)
+
+    def test_save_reports_email_that_already_belongs_to_another_circle(self):
+        """Cross-circle duplicate emails return readable JSON without data loss."""
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "contacts.db"
+            with sqlite3.connect(database) as connection:
+                connection.executescript(
+                    """
+                    CREATE TABLE contacts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        circle TEXT NOT NULL,
+                        touch_date TEXT
+                    );
+                    INSERT INTO contacts(name, email, circle, touch_date)
+                    VALUES ('Existing Person', 'existing@example.com', 'circle-a', NULL);
+                    INSERT INTO contacts(name, email, circle, touch_date)
+                    VALUES ('Circle B Seed', 'seed@example.com', 'circle-b', NULL);
+                    """
+                )
+            with patch("friendly_mailer.web.DATABASE_PATH", database):
+                response = self.client.post(
+                    "/api/save",
+                    json={
+                        "contacts": [
+                            {"name": "Existing Person", "email": "existing@example.com"}
+                        ],
+                        "subject": "Hello",
+                        "message": "Hi {name}!",
+                        "contactFile": "circle-b",
+                        "messageFile": "qa1.txt",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 400)
+            result = response.get_json()
+            self.assertFalse(result["ok"])
+            self.assertIn("existing@example.com (currently in circle-a)", result["error"])
+            with sqlite3.connect(database) as connection:
+                rows = connection.execute(
+                    "SELECT email, circle FROM contacts ORDER BY email"
+                ).fetchall()
+            self.assertEqual(
+                rows,
+                [("existing@example.com", "circle-a"), ("seed@example.com", "circle-b")],
+            )
 
     def test_noai_preview_returns_local_substitution(self):
         """No-AI preview expands the name and returns a send token."""

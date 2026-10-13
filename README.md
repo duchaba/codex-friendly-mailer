@@ -2,9 +2,10 @@
 
 A review-first command-line app that lightly varies a personal message for each friend with the OpenAI API, then sends approved drafts through your Gmail account. It uses Gmail OAuth; your Gmail password is never requested or stored.
 
-Current release: **v2.0 — ELVTR Tested**. The dashboard stores contacts in the
-local SQLite database, organizes recipient selection by circle, and sends large
-campaigns in tracked 50-recipient batches.
+Current release: **v2.1 — More Templates**. The dashboard stores contacts in the
+local SQLite database, organizes recipient selection by circle, provides a
+growing library of reusable message templates, and sends large campaigns in
+tracked 50-recipient batches.
 
 Use this only for people who reasonably expect to hear from you. The dashboard
 accepts campaigns of up to 500 recipients, delivers them sequentially in

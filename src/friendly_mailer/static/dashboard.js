@@ -88,7 +88,15 @@ async function api(path, data) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  const result = await response.json();
+  const responseText = await response.text();
+  let result;
+  try {
+    result = JSON.parse(responseText);
+  } catch (error) {
+    throw new Error(
+      `The server returned an unexpected response (${response.status}). Please try again or check the dashboard terminal.`,
+    );
+  }
   if (!response.ok || !result.ok) throw new Error(result.error || "Request failed");
   return result;
 }

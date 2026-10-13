@@ -153,6 +153,26 @@ def _save_circle_contacts(circle: str, contacts: list[Contact]) -> None:
     if circle not in _load_circles():
         raise ValueError(f"Unknown contact circle: {circle}")
     with sqlite3.connect(DATABASE_PATH) as connection:
+        incoming_emails = [contact.email for contact in contacts]
+        placeholders = ",".join("?" for _ in incoming_emails)
+        conflicts = connection.execute(
+            f"""
+            SELECT email, circle
+            FROM contacts
+            WHERE circle <> ? AND email IN ({placeholders})
+            ORDER BY email COLLATE NOCASE
+            """,
+            (circle, *incoming_emails),
+        ).fetchall()
+        if conflicts:
+            conflict_text = ", ".join(
+                f"{email} (currently in {existing_circle})"
+                for email, existing_circle in conflicts
+            )
+            raise ValueError(
+                "These email addresses already exist in another circle: "
+                f"{conflict_text}. Remove them here or edit their existing records."
+            )
         connection.execute("DELETE FROM contacts WHERE circle = ?", (circle,))
         connection.executemany(
             "INSERT INTO contacts(name, email, circle, touch_date) VALUES (?, ?, ?, NULL)",
@@ -341,6 +361,10 @@ def create_app() -> Flask:
             return jsonify({"ok": True, "message": "Saved selected contacts and message"})
         except (AttributeError, OSError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
+        except sqlite3.Error as exc:
+            return jsonify(
+                {"ok": False, "error": f"Database could not save contacts: {exc}"}
+            ), 400
 
     @app.post("/api/preview")
     def preview():
